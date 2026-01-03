@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leads Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white shadow p-4 flex flex-col md:flex-row gap-3 md:gap-0 md:justify-between md:items-center">
+    <h1 class="text-2xl font-bold text-gray-800">Leads Tracker</h1>
+    <div class="flex gap-2">
+      <input type="file" id="excelInput" accept=".csv,.xlsx" class="hidden" />
+      <button onclick="document.getElementById('excelInput').click()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Import Excel/CSV</button>
+      <button onclick="loadFromGoogleSheet()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">Sync Google Sheet</button>
+      <button onclick="openCreateLeadModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Create Lead</button>
+    </div>
+  </header>
+
+  <!-- Stats -->
+  <section class="p-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="bg-white p-4 rounded-xl shadow">
+      <p class="text-gray-500">Total Leads</p>
+      <h2 id="totalLeads" class="text-3xl font-bold">0</h2>
+    </div>
+    <div class="bg-white p-4 rounded-xl shadow">
+      <p class="text-gray-500">New</p>
+      <h2 id="newLeads" class="text-3xl font-bold text-blue-600">0</h2>
+    </div>
+    <div class="bg-white p-4 rounded-xl shadow">
+      <p class="text-gray-500">Contacted</p>
+      <h2 id="contactedLeads" class="text-3xl font-bold text-yellow-600">0</h2>
+    </div>
+    <div class="bg-white p-4 rounded-xl shadow">
+      <p class="text-gray-500">Converted</p>
+      <h2 id="convertedLeads" class="text-3xl font-bold text-green-600">0</h2>
+    </div>
+  </section>
+
+  <!-- Search & Filter -->
+  <section class="p-6 flex flex-col md:flex-row gap-3 items-center">
+    <input type="text" id="searchInput" placeholder="Search leads..." class="p-2 rounded border border-gray-300 flex-1" />
+    <select id="statusFilter" class="p-2 rounded border border-gray-300">
+      <option value="all">All Status</option>
+      <option value="New">New</option>
+      <option value="Contacted">Contacted</option>
+      <option value="Converted">Converted</option>
+    </select>
+  </section>
+
+  <!-- Table -->
+  <section class="p-6">
+    <div class="bg-white rounded-xl shadow overflow-x-auto">
+      <table class="min-w-full text-left">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="p-3">Name</th>
+            <th class="p-3">Email</th>
+            <th class="p-3">Phone</th>
+            <th class="p-3">Source</th>
+            <th class="p-3">Status</th>
+            <th class="p-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTable" class="divide-y"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Create Lead Modal -->
+  <div id="createLeadModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+    <div class="bg-white p-6 rounded-lg w-96">
+      <h2 class="text-xl font-bold mb-4">Create New Lead</h2>
+      <input type="text" id="newName" placeholder="Name" class="w-full p-2 mb-2 border rounded" />
+      <input type="email" id="newEmail" placeholder="Email" class="w-full p-2 mb-2 border rounded" />
+      <input type="text" id="newPhone" placeholder="Phone" class="w-full p-2 mb-2 border rounded" />
+      <select id="newStatus" class="w-full p-2 mb-4 border rounded">
+        <option value="New">New</option>
+        <option value="Contacted">Contacted</option>
+        <option value="Converted">Converted</option>
+      </select>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeCreateLeadModal()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Cancel</button>
+        <button onclick="createLead()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    let leads = [];
+
+    function renderDashboard(filterText = '', filterStatus = 'all') {
+      const table = document.getElementById('leadsTable');
+      table.innerHTML = '';
+
+      let newCount = 0, contactedCount = 0, convertedCount = 0;
+
+      leads.forEach((lead, index) => {
+        const matchesText = lead.Name.toLowerCase().includes(filterText) || lead.Email.toLowerCase().includes(filterText) || lead.Phone.includes(filterText);
+        const matchesStatus = filterStatus === 'all' || lead.Status === filterStatus;
+
+        if (!matchesText || !matchesStatus) return;
+
+        if (lead.Status.toLowerCase() === 'new') newCount++;
+        else if (lead.Status.toLowerCase() === 'contacted') contactedCount++;
+        else if (lead.Status.toLowerCase() === 'converted') convertedCount++;
+
+        table.innerHTML += `
+          <tr class="hover:bg-gray-50">
+            <td class="p-3">${lead.Name}</td>
+            <td class="p-3">${lead.Email}</td>
+            <td class="p-3">${lead.Phone}</td>
+            <td class="p-3">${lead.Source}</td>
+            <td class="p-3">
+              <span class="px-2 py-1 rounded text-sm ${lead.Status.toLowerCase() === 'new' ? 'bg-blue-100 text-blue-700' : lead.Status.toLowerCase() === 'contacted' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">${lead.Status}</span>
+            </td>
+            <td class="p-3 text-sm text-gray-500 flex gap-1">
+              <a href="https://wa.me/${lead.Phone}?text=Hello%20${encodeURIComponent(lead.Name)},%20we%20are%20contacting%20you%20regarding%20your%20lead." target="_blank" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">WhatsApp</a>
+              <a href="mailto:${lead.Email}?subject=Regarding Your Lead&body=Hello ${encodeURIComponent(lead.Name)},%0D%0AWe are contacting you regarding your lead." target="_blank" class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">Email</a>
+              <button onclick="deleteLead(${index})" class="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600">Delete</button>
+            </td>
+          </tr>`;
+      });
+
+      document.getElementById('totalLeads').innerText = leads.length;
+      document.getElementById('newLeads').innerText = newCount;
+      document.getElementById('contactedLeads').innerText = contactedCount;
+      document.getElementById('convertedLeads').innerText = convertedCount;
+    }
+
+    function deleteLead(index) {
+      leads.splice(index, 1);
+      renderDashboard(document.getElementById('searchInput').value.toLowerCase(), document.getElementById('statusFilter').value);
+    }
+
+    function openCreateLeadModal() {
+      document.getElementById('createLeadModal').classList.remove('hidden');
+      document.getElementById('createLeadModal').classList.add('flex');
+    }
+
+    function closeCreateLeadModal() {
+      document.getElementById('createLeadModal').classList.add('hidden');
+      document.getElementById('createLeadModal').classList.remove('flex');
+    }
+
+    function createLead() {
+      const name = document.getElementById('newName').value;
+      const email = document.getElementById('newEmail').value;
+      const phone = document.getElementById('newPhone').value;
+      const status = document.getElementById('newStatus').value;
+      if (!name || !email || !phone) return alert('Please fill all fields');
+      leads.push({ Name: name, Email: email, Phone: phone, Source: 'Manual', Status: status });
+      renderDashboard();
+      closeCreateLeadModal();
+    }
+
+    // Search and Filter
+    document.getElementById('searchInput').addEventListener('input', () => {
+      const text = document.getElementById('searchInput').value.toLowerCase();
+      const status = document.getElementById('statusFilter').value;
+      renderDashboard(text, status);
+    });
+
+    document.getElementById('statusFilter').addEventListener('change', () => {
+      const text = document.getElementById('searchInput').value.toLowerCase();
+      const status = document.getElementById('statusFilter').value;
+      renderDashboard(text, status);
+    });
+
+    // Excel / CSV Import
+    document.getElementById('excelInput').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+          leads = results.data.map(row => ({
+            Name: row.Name || '',
+            Email: row.Email || '',
+            Phone: row.Phone || '',
+            Source: row.Source || 'Excel',
+            Status: row.Status || 'New'
+          }));
+          renderDashboard();
+        }
+      });
+    });
+
+    // Google Sheet Sync (Published as CSV)
+    function loadFromGoogleSheet() {
+      const sheetUrl = 'PASTE_YOUR_GOOGLE_SHEET_CSV_URL_HERE';
+      if (!sheetUrl) return;
+      Papa.parse(sheetUrl, {
+        download: true,
+        header: true,
+        complete: function (results) {
+          leads = results.data.map(row => ({
+            Name: row.Name || '',
+            Email: row.Email || '',
+            Phone: row.Phone || '',
+            Source: 'Google Sheet',
+            Status: row.Status || 'New'
+          }));
+          renderDashboard();
+        }
+      });
+    }
+  </script>
+
+</body>
+</html>
